@@ -7,7 +7,6 @@ from calendar import timegm
 
 import re
 import uuid
-import jwt
 from base64 import urlsafe_b64encode
 import hashlib
 
