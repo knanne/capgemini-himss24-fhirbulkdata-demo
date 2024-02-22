@@ -1,0 +1,76 @@
+{
+  "scriptFile": "__init__.py",
+  "bindings": [
+    {
+      "authLevel": "anonymous",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "req",
+      "methods": [
+        "get",
+        "post"
+      ]
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "patientBlob",
+      "path": "export/Patient-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "encounterBlob",
+      "path": "export/Encounter-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "conditionBlob",
+      "path": "export/Condition-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "medicationRequestBlob",
+      "path": "export/Medication-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "practitionerBlob",
+      "path": "export/Practitioner-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "organizationBlob",
+      "path": "export/Organization-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "explanationOfBenefitBlob",
+      "path": "export/ExplanationOfBenefit-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    },
+    {
+      "type": "blob",
+      "direction": "out",
+      "name": "coverageBlob",
+      "path": "export/Coverage-{rand-guid}.json",
+      "connection": "fetchbulkdata7f69d6_STORAGE"
+    }
+  ]
+}
