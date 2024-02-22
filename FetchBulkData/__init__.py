@@ -451,9 +451,9 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         status_code, status_content = poll_status(status_code, status_url, access_token)
         
         ### MOVE BLOBS ONCE UPLOADED ###
-        processed_container_name = os.environ["processed_container_name"]
+        import_container_name = os.environ["import_container_name"]
         blobs = get_list_blobs(storage_client, export_container_name)
-        copy_blobs(storage_client, export_container_name, processed_container_name, blobs)
+        copy_blobs(storage_client, export_container_name, import_container_name, blobs)
 
         return func.HttpResponse(
             f"SUCCESS: FHIR Bulk Export Complete",
