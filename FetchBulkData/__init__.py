@@ -293,9 +293,9 @@ def poll_status(status_code, status_url, access_token):
                 logging.info(f'''Status: {status_code} - {r_status.headers['X-Progress']}''')
             except:
                 logging.info(f'Status: {status_code}')
-            logging.info('Sleeping 10s...')
-            time.sleep(10)
-            i+=10
+            logging.info('Sleeping 30s...')
+            time.sleep(30)
+            i+=30
         else:
             logging.info(f'Status: {status_code} {r_status.text}')
             raise Exception(f'Status: {status_code} {r_status.text}')
@@ -437,7 +437,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                logging.info(f'Blob Storage Not Configured for {data_type}')
 
         # TODO: Change this to Polling
-        logging.info('Waiting for Uploads to complete')
+        logging.info('Waiting for Uploads to complete, sleeping 30s...')
         time.sleep(30)
 
         ### IMPORT INTO CAPGEMINI FHIR SERVER ###
@@ -454,7 +454,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         status_code, status_content = poll_status(status_code, status_url, access_token)
 
         # TODO: Change this to Polling
-        logging.info('Waiting for Imports to complete')
+        logging.info('Waiting for Imports to complete, sleeping 30s...')
         time.sleep(30)
         
         ### MOVE BLOBS ONCE UPLOADED ###
