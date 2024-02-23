@@ -8,11 +8,11 @@
       }
     },
     "logLevel": {
-      "default": "Error",
-      "Azure.Core": "Error",
-      "azure.core.pipeline.policies.http_logging_policy": "Error",
-      "Azure.Messaging.ServiceBus": "Error",
-      "Azure.Identity": "Error"
+      "default": "Information",
+      "Azure.Core": "Warning",
+      "System.Net.Http.HttpClient": "Warning",
+      "Azure.Identity": "Warning",
+      "azure.core.pipeline.policies.http_logging_policy": "Warning"
     }
   },
   "extensionBundle": {

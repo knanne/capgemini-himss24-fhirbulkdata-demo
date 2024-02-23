@@ -200,7 +200,7 @@ def get_list_blobs(blob_service_client: BlobServiceClient, container_name):
     blob_list = container_client.list_blobs()
     return blob_list
 
-def build_fhir_import_parameters(storage_client, container_name, blobs):
+def build_fhir_import_parameters(storage_client, container_name, blob_clients):
     logging.info('Building FHIR import parameters')
     import_param = Parameters.construct()
     pp_all = []
@@ -217,15 +217,15 @@ def build_fhir_import_parameters(storage_client, container_name, blobs):
     pp_mode.valueString = 'InitialLoad' # will change to incremental once server is reconfigured
     pp_all.append(pp_mode)
 
-    for blob in blobs:
+    for blob_client in blob_clients:
         # extract resource name from blob name (e.g. Patient from Patient-4aeccdd9-0a79-46e0-a7f2-640f0c376e28.json)
-        blob_name = blob.name.split('-')[0]
-        blob_uri = storage_client.url+container_name+'/'+blob.name
+        resource_name = blob_client.blob_name.split('-')[0]
+        blob_uri = blob_client.url
         
         # file type parameter object (type of FHIR resource)
         pp_type = ParametersParameter.construct()
         pp_type.name = 'type'
-        pp_type.valueString = blob_name
+        pp_type.valueString = resource_name
         
         # file url parameter object
         pp_url = ParametersParameter.construct()
@@ -317,18 +317,24 @@ def get_data_export(data_url, access_token):
     logging.info(f'Successfully retreived file')
     return r_file
 
-def copy_blobs(storage_client, source_container, target_container, blobs):
+def copy_blobs(storage_client, source_container, target_container, copy_blobs):
     logging.info(f'Copying Blobs from {source_container}/ to {target_container}/')
-    for blob in blobs:
-        logging.info(f'{blob.name}')
-        source_blob_uri = storage_client.url+source_container+'/'+blob.name
-        target_blob_uri = storage_client.url+target_container+'/'+blob.name
-        target_blob = storage_client.get_blob_client(target_container, blob.name)
+    for blob_client in copy_blobs:
+        logging.info(f'{blob_client.blob_name}')
+        source_blob_uri = storage_client.url+source_container+'/'+blob_client.blob_name
+        target_blob_uri = storage_client.url+target_container+'/'+blob_client.blob_name
+        target_blob = storage_client.get_blob_client(target_container, blob_client.blob_name)
         target_blob.start_copy_from_url(source_blob_uri)
-        source_blob = storage_client.get_blob_client(source_container, blob.name)
+        source_blob = storage_client.get_blob_client(source_container, blob_client.blob_name)
         source_blob.delete_blob()
         logging.info('  Successfully copied')
     return None
+
+def upload_blob_stream(blob_service_client: BlobServiceClient, container_name: str, blob_name: str, input_stream):
+    logging.info(f'Uploading {blob_name} to {container_name} ')
+    blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
+    blob_client.upload_blob(input_stream, blob_type="BlockBlob")
+    return blob_client
 
 def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.Out[str], conditionBlob: func.Out[str], medicationRequestBlob: func.Out[str], practitionerBlob: func.Out[str], organizationBlob: func.Out[str], explanationOfBenefitBlob: func.Out[str], coverageBlob: func.Out[str]) -> func.HttpResponse:
     logging.info('Python HTTP trigger function started')
@@ -381,6 +387,10 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
     scope = req_body.get('scope','system/Condition.read system/MedicationRequest.read system/Patient.read')
 
     try:
+        storage_name = os.environ["storage_name"]
+        storage_client = build_storage_client(storage_name)
+        export_container_name = os.environ["export_container_name"]
+        
         ### AUTHENTICATE VENDOR FHIR SERVER ###
         if smart_url is not None:
             token_url = get_token_url(smart_url)
@@ -404,63 +414,34 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         status_code, status_content = poll_status(status_code, status_url, access_token)
 
         ### GET EXPORT FROM VENDOR FHIR SERVER ###
+        blob_clients = []
         for r in json.loads(status_content)['output']:
             data_type = r['type']
             logging.info(f'Attemping to get export for {data_type}')
             data_url = r['url']
             r_file = get_data_export(data_url, access_token)
-                
-            logging.info('Attempting to Write to Blob Storage')
-            exported = True
-            if data_type == 'Patient':
-                patientBlob.set(r_file.content)
-            elif data_type == 'Encounter':
-                encounterBlob.set(r_file.content)
-            elif data_type == 'Condition':
-                conditionBlob.set(r_file.content)
-            elif data_type == 'MedicationRequest':
-                medicationRequestBlob.set(r_file.content)
-            elif data_type == 'Practitioner':
-                practitionerBlob.set(r_file.content)
-            elif data_type == 'Organization':
-                organizationBlob.set(r_file.content)
-            elif data_type == 'ExplanationOfBenefit':
-                explanationOfBenefitBlob.set(r_file.content)
-            elif data_type == 'Coverage':
-                coverageBlob.set(r_file.content)
-            else:
-               exported = False
-                
-            if exported:
-               logging.info(f'Successfully Exported {data_type}')
-            else:
-               logging.info(f'Blob Storage Not Configured for {data_type}')
-
+            
+            logging.info('Writing to Blob Storage')
+            file_name = data_type+'-'+client_id+'-'+str(uuid.uuid4())+'.json'
+            data_bytes = r_file.content.decode(encoding='utf-8')
+            blob_client = upload_blob_stream(storage_client, export_container_name, file_name, data_bytes)
+            blob_clients.append(blob_client)
+        
         # TODO: Change this to Polling
         logging.info('Waiting for Uploads to complete, sleeping 30s...')
         time.sleep(30)
 
         ### IMPORT INTO CAPGEMINI FHIR SERVER ###
-        storage_name = os.environ["storage_name"]
-        storage_client = build_storage_client(storage_name)
-
-        export_container_name = os.environ["export_container_name"]
-        blobs = get_list_blobs(storage_client, export_container_name)
-        import_body = build_fhir_import_parameters(storage_client, export_container_name, blobs)
+        import_body = build_fhir_import_parameters(storage_client, export_container_name, blob_clients)
 
         capgemini_fhir_server = os.environ["capgemini_fhir_server"]
         access_token = get_fhir_server_access_token(capgemini_fhir_server)
         status_code, status_url = import_to_fhir(capgemini_fhir_server, import_body, access_token)
         status_code, status_content = poll_status(status_code, status_url, access_token)
-
-        # TODO: Change this to Polling
-        logging.info('Waiting for Imports to complete, sleeping 30s...')
-        time.sleep(30)
         
         ### MOVE BLOBS ONCE UPLOADED ###
         import_container_name = os.environ["import_container_name"]
-        blobs = get_list_blobs(storage_client, export_container_name)
-        copy_blobs(storage_client, export_container_name, import_container_name, blobs)
+        copy_blobs(storage_client, export_container_name, import_container_name, blob_clients)
 
         return func.HttpResponse(
             f"SUCCESS: FHIR Bulk Export Complete",
