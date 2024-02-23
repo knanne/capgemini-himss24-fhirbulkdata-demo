@@ -436,6 +436,10 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
             else:
                logging.info(f'Blob Storage Not Configured for {data_type}')
 
+        # TODO: Change this to Polling
+        logging.info('Waiting to Uploads to complete')
+        time.sleep(10)
+
         ### IMPORT INTO CAPGEMINI FHIR SERVER ###
         storage_name = os.environ["storage_name"]
         storage_client = build_storage_client(storage_name)
@@ -448,6 +452,10 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         access_token = get_fhir_server_access_token(capgemini_fhir_server)
         status_code, status_url = import_to_fhir(capgemini_fhir_server, import_body, access_token)
         status_code, status_content = poll_status(status_code, status_url, access_token)
+
+        # TODO: Change this to Polling
+        logging.info('Waiting to Imports to complete')
+        time.sleep(10)
         
         ### MOVE BLOBS ONCE UPLOADED ###
         import_container_name = os.environ["import_container_name"]
