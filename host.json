@@ -8,7 +8,10 @@
       }
     },
     "logLevel": {
-      "Azure.Core": "Error"
+      "default": "Information",
+      "Azure.Core": "Error",
+      "System.Net.Http.HttpClient": "Information",
+      "Azure.Messaging.ServiceBus": "Error"
     }
   },
   "extensionBundle": {
