@@ -8,10 +8,9 @@
       }
     },
     "logLevel": {
-      "default": "Information",
+      "default": "Error",
       "Azure.Core": "Error",
       "azure.core.pipeline.policies.http_logging_policy": "Error",
-      "System.Net.Http.HttpClient": "Information",
       "Azure.Messaging.ServiceBus": "Error",
       "Azure.Identity": "Error"
     }
