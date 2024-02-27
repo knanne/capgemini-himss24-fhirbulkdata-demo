@@ -336,6 +336,90 @@ def upload_blob_stream(blob_service_client: BlobServiceClient, container_name: s
     blob_client.upload_blob(input_stream, blob_type="BlockBlob")
     return blob_client
 
+def process_demo_data(server_url, resource_name, data_bytes):
+    logging.info('Processing Data for Demo')
+    ndjson = data_bytes.decode(encoding='utf-8').rstrip('\r\n').split('\n')
+
+    epic_demo_patient_id = 'egqBHVfQlt4Bw3XGXoxVxHg3'
+    cerner_demo_patient_id = '12783128' #'5123829'
+    
+    demo_patient_identifier = """{
+        "system": "http://hl7.org/fhir/sid/us-mbi",
+        "type": {"coding": [{"code": "MC",
+        "display": "Patient's Medicare number",
+        "extension": [{
+            "url": "https://bluebutton.cms.gov/resources/codesystem/identifier-currency",
+            "valueCoding": {
+                "code": "current",
+                 "display": "Current",
+                 "system": "https://bluebutton.cms.gov/resources/codesystem/identifier-currency"
+            }
+        }],
+        "system": "http://terminology.hl7.org/CodeSystem/v2-0203"}]},
+        "value": "1S00E00AA27"
+    }
+    """
+    demo_condition_code = """{
+        "coding" : [
+            {
+                "system" : "http://hl7.org/fhir/sid/icd-10-cm",
+                "code" : "E11.59",
+                "display" : "Type 2 diabetes mellitus with other circulatory complications"
+            }
+        ],
+        "text" : "Type 2 diabetes mellitus with other circulatory complications"
+    }
+    """
+    demo_medication_codeableconcept = """ {
+        "coding": [
+          {
+            "system": "http://hl7.org/fhir/sid/ndc",
+            "code": "0002-8500-01",
+            "display": "Insulin Lispro (NDC: 0002-8500-01)"
+          }
+        ],
+        "text": "Insulin Lispro"
+    }
+    """
+
+    if 'epic' in server_url:
+        logging.info('Updating EPIC Data')
+        if resource_name == 'Patient':
+            for i,resource in enumerate(ndjson):
+                resource_json = json.loads(resource)
+                # only update the demo patient (one with conditions and medications)
+                if resource_json['id'] == epic_demo_patient_id:
+                    logging.info(f"  Updating Patient Resource with ID: {resource_json['id']}")
+                    resource_json['identifier'] = [json.loads(demo_patient_identifier)]
+                    ndjson[i] =  json.dumps(resource_json)
+        elif resource_name == 'Condition':
+            # update all medications (all but the demo patient's will be ignored)
+            for i,resource in enumerate(ndjson):
+                logging.info(f' {i}: Updating Condition Resource')
+                resource_json = json.loads(resource)
+                resource_json['code'] = json.loads(demo_condition_code)
+                ndjson[i] =  json.dumps(resource_json)
+        elif resource_name == 'MedicationRequest':
+            # update all medications (all but the demo patient's will be ignored)
+            for i,resource in enumerate(ndjson):
+                logging.info(f'  {i}: Updating MedicationRequest')
+                resource_json = json.loads(resource)
+                resource_json['medicationCodeableConcept'] = json.loads(demo_medication_codeableconcept)
+                ndjson[i] = json.dumps(resource_json)
+    elif 'cerner' in server_url:
+        logging.info('Updating Cerner Data')
+        if resource_name == 'Patient':
+            for i,resource in enumerate(ndjson):
+                resource_json = json.loads(resource)
+                # only update the demo patient (one with conditions and medications)
+                if resource_json['id'] == cerner_demo_patient_id:
+                    logging.info(f"  Updating Patient Resource with ID: {resource_json['id']}")
+                    resource_json['identifier'] = [json.loads(demo_patient_identifier)]
+                    ndjson[i] =  json.dumps(resource_json)
+
+    data_bytes = '\n'.join(ndjson).encode()
+    return data_bytes
+
 def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.Out[str], conditionBlob: func.Out[str], medicationRequestBlob: func.Out[str], practitionerBlob: func.Out[str], organizationBlob: func.Out[str], explanationOfBenefitBlob: func.Out[str], coverageBlob: func.Out[str]) -> func.HttpResponse:
     logging.info('Python HTTP trigger function started')
 
@@ -416,14 +500,25 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         ### GET EXPORT FROM VENDOR FHIR SERVER ###
         blob_clients = []
         for r in json.loads(status_content)['output']:
-            data_type = r['type']
-            logging.info(f'Attemping to get export for {data_type}')
+            resource_type = r['type']
+            
+            logging.info(f'Attemping to get export for {resource_type}')
             data_url = r['url']
             r_file = get_data_export(data_url, access_token)
             
-            logging.info('Writing to Blob Storage')
-            file_name = data_type+'-'+client_id+'-'+str(uuid.uuid4())+'.json'
-            data_bytes = r_file.content.decode(encoding='utf-8')
+            data_bytes = r_file.content
+
+            file_name = resource_type+'-'+client_id+'-'+str(uuid.uuid4())+'.json'
+            
+            ### PROCESS DATA FOR DEMO ###
+            data_bytes = process_demo_data(server_url, resource_type, data_bytes)
+
+            ### LOCAL ONLY - WRITE TO FILE ###
+            #logging.info('Writing to Local Storage')
+            #with open('data/'+file_name, 'wb') as f:
+            #    f.write(data_bytes
+
+            ### UPLOAD TO BLOB STORAGE ###
             blob_client = upload_blob_stream(storage_client, export_container_name, file_name, data_bytes)
             blob_clients.append(blob_client)
         
