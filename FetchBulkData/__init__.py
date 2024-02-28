@@ -335,7 +335,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
     ndjson = data_bytes.decode(encoding='utf-8').rstrip('\r\n').split('\n')
 
     epic_demo_patient_id = 'egqBHVfQlt4Bw3XGXoxVxHg3'
-    cerner_demo_patient_id = '12783128' #'5123829'
+    cerner_demo_patient_id = '5123829'
     
     demo_patient_identifier = """{
         "system": "http://hl7.org/fhir/sid/us-mbi",
@@ -542,5 +542,6 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         )
     except Exception as e:
         return func.HttpResponse(
-            f"{e}"
+            f"{e}",
+            status_code=500
         )
