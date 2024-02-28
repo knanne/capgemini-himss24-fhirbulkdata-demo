@@ -211,12 +211,6 @@ def build_fhir_import_parameters(storage_client, container_name, blob_clients):
     pp_input_format.valueString = 'application/fhir+ndjson'
     pp_all.append(pp_input_format)
     
-    # mode parameter object
-    pp_mode = ParametersParameter.construct()
-    pp_mode.name = 'mode'
-    pp_mode.valueString = 'InitialLoad' # will change to incremental once server is reconfigured
-    pp_all.append(pp_mode)
-
     for blob_client in blob_clients:
         # extract resource name from blob name (e.g. Patient from Patient-4aeccdd9-0a79-46e0-a7f2-640f0c376e28.json)
         resource_name = blob_client.blob_name.split('-')[0]
