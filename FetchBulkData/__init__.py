@@ -404,6 +404,10 @@ def process_demo_data(server_url, resource_name, data_bytes):
             for i,resource in enumerate(ndjson):
                 logging.info(f'  {i}: Updating MedicationRequest')
                 resource_json = json.loads(resource)
+                try:
+                    del resource_json['medicationReference']
+                except:
+                    pass
                 resource_json['medicationCodeableConcept'] = json.loads(demo_medication_codeableconcept)
                 ndjson[i] = json.dumps(resource_json)
     elif 'cerner' in server_url:
