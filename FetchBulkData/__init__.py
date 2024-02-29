@@ -414,9 +414,48 @@ def process_demo_data(server_url, resource_name, data_bytes):
                     logging.info(f"  Updating Patient Resource with ID: {resource_json['id']}")
                     resource_json['identifier'] = [json.loads(demo_patient_identifier)]
                     ndjson[i] =  json.dumps(resource_json)
+        elif resource_name == 'MedicationRequest':
+            for i,resource in enumerate(ndjson):
+                logging.info(f'  {i}: Updating MedicationRequest')
+                resource_json = json.loads(resource)
+                resource_json['authoredOn'] = '2019-10-30'
+                ndjson[i] = json.dumps(resource_json)
+    elif 'bcda' in server_url:
+        logging.info('Updating CMS Data')
+        if resource_name == 'ExplanationOfBenefit':
+            for i,resource in enumerate(ndjson):
+                resource_json = json.loads(resource)
+                # only updating target rx claims for demo patient
+                if resource_json['patient']['reference'] == 'Patient/-10000000000027':
+                    for ct in resource_json['type']['coding']:
+                        if ct['system'] == 'http://terminology.hl7.org/CodeSystem/claim-type':
+                            claim_type = ct['code']
+                    if claim_type == 'pharmacy':
+                        for item in resource_json['item']:
+                            for code in item['productOrService']['coding']:
+                                if code['system']=='http://hl7.org/fhir/sid/ndc' and 'display' not in code.keys():
+                                    logging.info(f' {i}: Updating ExplanationOfBenefit')
+                                    logging.info('Missing rx name, getting info from NIH...')
+                                    rxinfo = get_rxinfo(code['code'])
+                                    code['display'] = rxinfo['name']
+                                    
+                                    if item['servicedDate'] == '2019-10-30':    
+                                        rx_norm_code = {'system': 'http://www.nlm.nih.gov/research/umls/rxnorm',
+                                                        'code': rxinfo['rxnorm']}
+                                        item['productOrService']['coding'].append(rx_norm_code)
+                
+                ndjson[i] = json.dumps(resource_json)
 
     data_bytes = '\n'.join(ndjson).encode()
     return data_bytes
+
+def get_rxinfo(ndc):
+    base_url = 'https://rxnav.nlm.nih.gov/REST/ndcstatus.json?ndc='
+    req_url = f'{base_url}{ndc}'
+    r = requests.get(req_url)
+    body = json.loads(r.content)
+    return {'name': body['ndcStatus']['conceptName'], 'rxnorm': body['ndcStatus']['rxcui']}
+
 
 def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.Out[str], conditionBlob: func.Out[str], medicationRequestBlob: func.Out[str], practitionerBlob: func.Out[str], organizationBlob: func.Out[str], explanationOfBenefitBlob: func.Out[str], coverageBlob: func.Out[str]) -> func.HttpResponse:
     logging.info('Python HTTP trigger function started')
