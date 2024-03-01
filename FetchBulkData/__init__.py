@@ -448,7 +448,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
                     
                     # remove non pharmacy eobs
                     if claim_type != 'pharmacy':
-                        ndjson_removed.append(resource_json['id]'])
+                        ndjson_removed.append(resource_json['id'])
                     else:
                         for item in resource_json['item']:
                             serviced_date = item['servicedDate']
