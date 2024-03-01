@@ -396,11 +396,12 @@ def process_demo_data(server_url, resource_name, data_bytes):
                     resource_json['identifier'] = [json.loads(demo_patient_identifier)]
                     ndjson[i] =  json.dumps(resource_json)
         elif resource_name == 'Condition':
-            # update all medications (all but the demo patient's will be ignored)
+            # update all conditions (all but the demo patient's will be ignored)
             for i,resource in enumerate(ndjson):
                 logging.info(f' {i}: Updating Condition Resource')
                 resource_json = json.loads(resource)
                 resource_json['code'] = json.loads(demo_condition_code)
+                resource_json['recordedDate'] = '2019-09-04T11:10:27.000Z'
                 ndjson[i] =  json.dumps(resource_json)
         elif resource_name == 'MedicationRequest':
             # update all medications (all but the demo patient's will be ignored)
@@ -412,6 +413,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
                 except:
                     pass
                 resource_json['medicationCodeableConcept'] = json.loads(demo_medication_codeableconcept)
+                resource_json['authoredOn'] = '2019-09-04'
                 ndjson[i] = json.dumps(resource_json)
     elif 'cerner' in server_url:
         logging.info('Updating Cerner Data')
@@ -427,7 +429,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
             for i,resource in enumerate(ndjson):
                 logging.info(f'  {i}: Updating MedicationRequest')
                 resource_json = json.loads(resource)
-                resource_json['authoredOn'] = '2019-10-30'
+                resource_json['authoredOn'] = '2019-10-25'
                 ndjson[i] = json.dumps(resource_json)
     elif 'bcda' in server_url:
         ndjson_removed = []
@@ -438,7 +440,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
 
                 # remove eobs that are not for demo patient
                 if resource_json['patient']['reference'] != 'Patient/-10000000000027':
-                    ndjson_removed.append(json.dumps(resource_json))
+                    ndjson_removed.append(resource_json['id'])
                 else:
                     for ct in resource_json['type']['coding']:
                         if ct['system'] == 'http://terminology.hl7.org/CodeSystem/claim-type':
@@ -446,14 +448,14 @@ def process_demo_data(server_url, resource_name, data_bytes):
                     
                     # remove non pharmacy eobs
                     if claim_type != 'pharmacy':
-                        ndjson_removed.append(json.dumps(resource_json))
+                        ndjson_removed.append(resource_json['id]'])
                     else:
                         for item in resource_json['item']:
                             serviced_date = item['servicedDate']
                         
                         # remove eobs with a service date before 2019-09-01
                         if serviced_date < '2019-09-01':
-                            ndjson_removed.append(json.dumps(resource_json))
+                            ndjson_removed.append(resource_json['id'])
                         else:
                             logging.info(f'  {i}: Updating ExplanationOfBenefit')
 
@@ -469,13 +471,13 @@ def process_demo_data(server_url, resource_name, data_bytes):
                                         
                                         # remove eobs where rxnorm can't be found
                                         if rxinfo['rxnorm'] == '':
-                                            ndjson_removed.append(json.dumps(resource_json))
+                                            ndjson_removed.append(resource_json['id'])
                                         else:
                                             if 'display' not in code.keys():
                                                 # remove eobs without existing rx name and rx name can't
                                                 # be looked up
                                                 if rxinfo['name'] == '':
-                                                    ndjson_removed.append(json.dumps(resource_json))
+                                                    ndjson_removed.append(resource_json['id'])
                                                 else:
                                                     code['display'] = rxinfo['name']
                                                                                         
@@ -484,7 +486,8 @@ def process_demo_data(server_url, resource_name, data_bytes):
                                             item['productOrService']['coding'].append(rx_norm_code)
                     
                 ndjson[i] = json.dumps(resource_json)
-
+            
+            ndjson = [j for j in ndjson if json.loads(j)['id'] not in ndjson_removed]
     data_bytes = '\n'.join(ndjson).encode()
     return data_bytes
 
