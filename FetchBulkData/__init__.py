@@ -378,7 +378,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
         "coding": [
           {
             "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
-            "code": "106892"
+            "code": "106892",
             "display": "insulin isophane, human 70 UNT/ML / insulin, regular, human 30 UNT/ML Injectable Suspension [Humulin]"
           }
         ]
@@ -487,7 +487,9 @@ def process_demo_data(server_url, resource_name, data_bytes):
                     
                 ndjson[i] = json.dumps(resource_json)
             
+            logging.info(f'{len(ndjson) - len(ndjson_removed)}/{len(ndjson)} EOBs will be loaded')
             ndjson = [j for j in ndjson if json.loads(j)['id'] not in ndjson_removed]
+
     data_bytes = '\n'.join(ndjson).encode()
     return data_bytes
 
