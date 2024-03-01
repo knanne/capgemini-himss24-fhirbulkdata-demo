@@ -276,6 +276,7 @@ def poll_status(status_code, status_url, access_token):
         'Prefer': 'respond-async',
         'Accept': 'application/fhir+json'
     }
+
     i = 0
     while status_code != 200 or i > 600:
         r_status = requests.get(status_url, headers=headers)
@@ -296,6 +297,15 @@ def poll_status(status_code, status_url, access_token):
     
     if status_code == 200:
         logging.info(f'Status: {status_code} - Operation Complete')
+
+        # ensures status content is retrieved if status_code
+        # was 200 before while loop
+        r_status = requests.get(status_url, headers=headers)
+
+        if 'capgemini' in status_url:
+            logging.info(r_status.json()['output'])
+            logging.info(r_status.json()['error'])
+
         return status_code, r_status.content
     else:
         logging.info(f'Polling taking too long...')
@@ -367,12 +377,11 @@ def process_demo_data(server_url, resource_name, data_bytes):
     demo_medication_codeableconcept = """ {
         "coding": [
           {
-            "system": "http://hl7.org/fhir/sid/ndc",
-            "code": "0002-8500-01",
-            "display": "Insulin Lispro (NDC: 0002-8500-01)"
+            "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+            "code": "106892"
+            "display": "insulin isophane, human 70 UNT/ML / insulin, regular, human 30 UNT/ML Injectable Suspension [Humulin]"
           }
-        ],
-        "text": "Insulin Lispro"
+        ]
     }
     """
 
@@ -421,29 +430,59 @@ def process_demo_data(server_url, resource_name, data_bytes):
                 resource_json['authoredOn'] = '2019-10-30'
                 ndjson[i] = json.dumps(resource_json)
     elif 'bcda' in server_url:
+        ndjson_removed = []
         logging.info('Updating CMS Data')
         if resource_name == 'ExplanationOfBenefit':
             for i,resource in enumerate(ndjson):
                 resource_json = json.loads(resource)
-                # only updating target rx claims for demo patient
-                if resource_json['patient']['reference'] == 'Patient/-10000000000027':
+
+                # remove eobs that are not for demo patient
+                if resource_json['patient']['reference'] != 'Patient/-10000000000027':
+                    ndjson_removed.append(json.dumps(resource_json))
+                else:
                     for ct in resource_json['type']['coding']:
                         if ct['system'] == 'http://terminology.hl7.org/CodeSystem/claim-type':
                             claim_type = ct['code']
-                    if claim_type == 'pharmacy':
+                    
+                    # remove non pharmacy eobs
+                    if claim_type != 'pharmacy':
+                        ndjson_removed.append(json.dumps(resource_json))
+                    else:
                         for item in resource_json['item']:
-                            for code in item['productOrService']['coding']:
-                                if code['system']=='http://hl7.org/fhir/sid/ndc' and 'display' not in code.keys():
-                                    logging.info(f' {i}: Updating ExplanationOfBenefit')
-                                    logging.info('Missing rx name, getting info from NIH...')
-                                    rxinfo = get_rxinfo(code['code'])
-                                    code['display'] = rxinfo['name']
-                                    
-                                    if item['servicedDate'] == '2019-10-30':    
-                                        rx_norm_code = {'system': 'http://www.nlm.nih.gov/research/umls/rxnorm',
-                                                        'code': rxinfo['rxnorm']}
-                                        item['productOrService']['coding'].append(rx_norm_code)
-                
+                            serviced_date = item['servicedDate']
+                        
+                        # remove eobs with a service date before 2019-09-01
+                        if serviced_date < '2019-09-01':
+                            ndjson_removed.append(json.dumps(resource_json))
+                        else:
+                            logging.info(f'  {i}: Updating ExplanationOfBenefit')
+
+                            # remove meta element so import won't fail on version conflicts
+                            del resource_json['meta']
+
+                            # update rx claims with name, if necessary, and rxnorm code
+                            for item in resource_json['item']:
+                                for code in item['productOrService']['coding']:
+                                    if code['system'] == 'http://hl7.org/fhir/sid/ndc':
+                                        logging.info(f'   {i}: Getting additional info from NIH...')
+                                        rxinfo = get_rxinfo(code['code'])
+                                        
+                                        # remove eobs where rxnorm can't be found
+                                        if rxinfo['rxnorm'] == '':
+                                            ndjson_removed.append(json.dumps(resource_json))
+                                        else:
+                                            if 'display' not in code.keys():
+                                                # remove eobs without existing rx name and rx name can't
+                                                # be looked up
+                                                if rxinfo['name'] == '':
+                                                    ndjson_removed.append(json.dumps(resource_json))
+                                                else:
+                                                    code['display'] = rxinfo['name']
+                                                                                        
+                                            rx_norm_code = {'system': 'http://www.nlm.nih.gov/research/umls/rxnorm',
+                                                            'code': rxinfo['rxnorm']}
+                                            item['productOrService']['coding'].append(rx_norm_code)
+                    
                 ndjson[i] = json.dumps(resource_json)
 
     data_bytes = '\n'.join(ndjson).encode()
