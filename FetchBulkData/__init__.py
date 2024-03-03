@@ -519,11 +519,12 @@ def get_rxinfo(ndc):
 
 def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.Out[str], conditionBlob: func.Out[str], medicationRequestBlob: func.Out[str], practitionerBlob: func.Out[str], organizationBlob: func.Out[str], explanationOfBenefitBlob: func.Out[str], coverageBlob: func.Out[str]) -> func.HttpResponse:
     logging.info('Python HTTP trigger function started')
-
+    logging.info('Getting request params')
     req_method = req.method
     req_datatype = req.route_params.get('datatype')
     req_period = req.route_params.get('period')
 
+    logging.info('Getting env variables')
     storage_name = os.environ["storage_name"]
     storage_client = build_storage_client(storage_name)
     export_container_name = os.environ["export_container_name"]
@@ -531,6 +532,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
     capgemini_fhir_server = os.environ["capgemini_fhir_server"]
     
     if req_datatype == 'bulkimport' and req_period == 'latest':
+        logging.info('Get latest data from specified source')
         ### PROCESS HTTP PARAMETERS ###
         try:
             req_body = req.get_json()
@@ -646,6 +648,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
             message: f'Import polling status_code: 500 \n Import polling content: {e}'
     
     elif request_datatype == 'bulkimport' and req_period == 'historical':
+        logging.info('Reset CG FHIR server with historical data')
         access_token = get_fhir_server_access_token(capgemini_fhir_server)
         try:
             ### CLEAR CAPGEMINI FHIR SERVER ###
@@ -686,6 +689,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         except Exception as e:
             message: f'Import polling status_code: 500 \n Import polling content: {e}'
     elif request_datatype == 'token':
+        logging.info('Get token for CG FHIR server')
         try:
             message = get_fhir_server_access_token(capgemini_fhir_server)
         except Exception as e:
