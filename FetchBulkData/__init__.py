@@ -264,6 +264,8 @@ def bulk_update_cg_fhir_server(fhir_server, access_token, operation, **kwargs):
         logging.info(f'Clearing data from CG FHIR Server')
         queryp = {'_hardDelete': 'True'}
         r_kickoff = requests.delete(f'{fhir_server}/$bulk-delete', headers=headers, params=queryp)
+        logging.info(r_kickoff.url)
+        logging.info(json.dumps(headers))
 
     if r_kickoff.ok:
         status_code = r_kickoff.status_code
@@ -649,14 +651,13 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
 
                 message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
             except Exception as e:
-                message: f'Import polling status_code: 500 \n Import polling content: {e}'
+                message: f'{e}'
         
         elif req_datatype == 'bulkimport' and req_period == 'historical':
             logging.info('Reset CG FHIR server with historical data')
             access_token = get_fhir_server_access_token(capgemini_fhir_server)
             try:
                 ### CLEAR CAPGEMINI FHIR SERVER ###
-                logging.info('Clearing data from Capgemini FHIR Server')
                 status_code, status_url = bulk_update_cg_fhir_server(capgemini_fhir_server, access_token, 'delete')
                 status_code, status_content = poll_status(status_code, status_url, access_token)
 
@@ -691,8 +692,8 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
 
                 message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
             except Exception as e:
-                message: f'Import polling status_code: 500 \n Import polling content: {e}'
-        elif request_datatype == 'token':
+                message = f'{e}'
+        elif req_datatype == 'token':
             logging.info('Get token for CG FHIR server')
             try:
                 message = get_fhir_server_access_token(capgemini_fhir_server)
