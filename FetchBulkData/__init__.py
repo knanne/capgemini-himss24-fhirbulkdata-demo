@@ -647,12 +647,12 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 import_container_name = os.environ["import_container_name"]
                 copy_blobs(storage_client, export_container_name, import_container_name, blob_clients)
 
-                message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
+                message = {'import_status_code': poll_status_code, 'import_details': json.loads(status_content)}
             except Exception as e:
-                message: f'{e}'
+                message = {'error': f"{e}"}
         
-        elif req_datatype == 'bulkimport' and req_period == 'historical':
-            logging.info('Reset CG FHIR server with historical data')
+        elif req_datatype == 'bulkimport' and req_period == 'initial':
+            logging.info('Reset CG FHIR server with initial data')
             access_token = get_fhir_server_access_token(capgemini_fhir_server)
             try:
                 ### CLEAR CAPGEMINI FHIR SERVER ###
@@ -688,16 +688,16 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 status_code, status_url = bulk_update_cg_fhir_server(capgemini_fhir_server, access_token, 'import', import_body=import_body)
                 poll_status_code, status_content = poll_status(status_code, status_url, access_token)
 
-                message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
+                message = {'import_status_code': poll_status_code, 'import_details': json.loads(status_content)}
             except Exception as e:
-                message = f'{e}'
+                message = {'error': f"{e}"}
                 logging.exception("error")
-        elif req_datatype == 'token':
+        elif req_method = 'GET' and req_datatype == 'token':
             logging.info('Get token for CG FHIR server')
             try:
-                message = get_fhir_server_access_token(capgemini_fhir_server)
+                message = {'token': get_fhir_server_access_token(capgemini_fhir_server)}
             except Exception as e:
-                message: f'Getting token failed: {e}'
+                message = {'error': f"{e}"}
                 logging.exception("error")
 
         return func.HttpResponse(
@@ -706,7 +706,8 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         )
     except Exception as e:
         logging.exception("error")
+        message = {'error': f"{e}"}
         return func.HttpResponse(
-            f"{e}",
+            message,
             status_code=500
         )
