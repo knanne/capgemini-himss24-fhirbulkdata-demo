@@ -264,8 +264,6 @@ def bulk_update_cg_fhir_server(fhir_server, access_token, operation, **kwargs):
         logging.info(f'Clearing data from CG FHIR Server')
         queryp = {'_hardDelete': 'True'}
         r_kickoff = requests.delete(f'{fhir_server}/$bulk-delete', headers=headers, params=queryp)
-        logging.info(r_kickoff.url)
-        logging.info(json.dumps(headers))
 
     if r_kickoff.ok:
         status_code = r_kickoff.status_code
@@ -665,7 +663,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 logging.info('Importing initial data into Capgemini FHIR server')
 
                 # Timestamp to append to initialization data file names
-                ts = int(round(datetime.datetime.now().timestamp()))
+                ts = int(round(datetime.now().timestamp()))
 
                 # List current blobs in initialization container
                 container_client = storage_client.get_container_client(container=initialization_container_name)
