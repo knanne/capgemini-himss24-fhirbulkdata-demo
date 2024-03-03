@@ -287,8 +287,8 @@ def poll_status(status_code, status_url, access_token):
         'Accept': 'application/fhir+json'
     }
 
-    i = 0
-    while status_code != 200 or i > 600:
+    exp_backoff_cnt = 1
+    while status_code != 200 or exp_backoff_cnt > 8:
         r_status = requests.get(status_url, headers=headers)
         status_code = r_status.status_code
         if status_code == 200:
@@ -298,9 +298,10 @@ def poll_status(status_code, status_url, access_token):
                 logging.info(f'''Status: {status_code} - {r_status.headers['X-Progress']}''')
             except:
                 logging.info(f'Status: {status_code}')
-            logging.info('Sleeping 10s...')
-            time.sleep(10)
-            i+=10
+            sleep_time = 2 ** exp_backoff_cnt
+            logging.info(f'Sleeping {sleep_time}s...')
+            time.sleep(sleep_time)
+            exp_backoff_cnt += 1
         else:
             logging.info(f'Status: {status_code} {r_status.text}')
             raise Exception(f'Status: {status_code} {r_status.text}')
@@ -540,7 +541,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 status_code=400
             )
         
-        if req_datatype == 'bulk-import' and req_period == 'latest':    
+        if req_datatype == 'bulkimport' and req_period == 'latest':    
             server_url = req_body.get('server-url',None)
             if server_url is None:
                 logging.info('ERROR: Missing server_url in request body')
@@ -646,7 +647,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
             except Exception as e:
                 message: f'Import polling status_code: 500 \n Import polling content: {e}'
         
-        elif request_datatype == 'bulk-import' and req_period = 'historical':
+        elif request_datatype == 'bulkimport' and req_period = 'historical':
             access_token = get_fhir_server_access_token(capgemini_fhir_server)
             try:
                 ### CLEAR CAPGEMINI FHIR SERVER ###
