@@ -692,7 +692,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
             except Exception as e:
                 message = {'error': f"{e}"}
                 logging.exception("error")
-        elif req_method = 'GET' and req_datatype == 'token':
+        elif req_datatype == 'token':
             logging.info('Get token for CG FHIR server')
             try:
                 message = {'token': get_fhir_server_access_token(capgemini_fhir_server)}
