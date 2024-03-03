@@ -533,7 +533,8 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
     
     if req_datatype == 'bulkimport' and req_period == 'latest':
         logging.info('Get latest data from specified source')
-        ### PROCESS HTTP PARAMETERS ###
+        
+        logging.info('### PROCESS HTTP PARAMETERS ###')
         try:
             req_body = req.get_json()
         except ValueError:
@@ -581,7 +582,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
         scope = req_body.get('scope','system/Condition.read system/MedicationRequest.read system/Patient.read')
 
         try:                
-            ### AUTHENTICATE VENDOR FHIR SERVER ###
+            logging.info('### AUTHENTICATE VENDOR FHIR SERVER ###')
             if smart_url is not None:
                 token_url = get_token_url(smart_url)
             
@@ -599,11 +600,11 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 client_secret = get_secret_for_client(secret_name)
                 access_token, expire_time = get_access_token(token_url, client_id=client_id, client_secret=client_secret, scope=scope)
 
-            ### KICK OFF EXPORT FROM VENDOR FHIR SERVER ###
+            logging.info('### KICK OFF EXPORT FROM VENDOR FHIR SERVER ###')
             status_code, status_url = kickoff_export(kickoff_url, access_token)
             status_code, status_content = poll_status(status_code, status_url, access_token)
 
-            ### GET EXPORT FROM VENDOR FHIR SERVER ###
+            logging.info('### GET EXPORT FROM VENDOR FHIR SERVER ###')
             blob_clients = []
             for r in json.loads(status_content)['output']:
                 resource_type = r['type']
@@ -616,7 +617,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
 
                 file_name = resource_type+'-'+client_id+'-'+str(uuid.uuid4())+'.json'
                 
-                ### PROCESS DATA FOR DEMO ###
+                logging.info('### PROCESS DATA FOR DEMO ###')
                 data_bytes = process_demo_data(server_url, resource_type, data_bytes)
 
                 ### LOCAL ONLY - WRITE TO FILE ###
@@ -624,7 +625,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 #with open('data/'+file_name, 'wb') as f:
                 #    f.write(data_bytes
 
-                ### UPLOAD TO BLOB STORAGE ###
+                logging.info('### UPLOAD TO BLOB STORAGE ###')
                 blob_client = upload_blob_stream(storage_client, export_container_name, file_name, data_bytes)
                 blob_clients.append(blob_client)
             
@@ -632,14 +633,14 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
             # logging.info('Waiting for Uploads to complete, sleeping 30s...')
             # time.sleep(30)
 
-            ### IMPORT INTO CAPGEMINI FHIR SERVER ###
+            logging.info('### IMPORT INTO CAPGEMINI FHIR SERVER ###')
             import_body = build_fhir_import_parameters(storage_client, export_container_name, blob_clients)
 
             access_token = get_fhir_server_access_token(capgemini_fhir_server)
             status_code, status_url = bulk_update_cg_fhir_server(capgemini_fhir_server, access_token, 'import', import_body=import_body)
             poll_status_code, status_content = poll_status(status_code, status_url, access_token)
             
-            ### MOVE BLOBS ONCE UPLOADED ###
+            logging.info('### MOVE BLOBS ONCE UPLOADED ###')
             import_container_name = os.environ["import_container_name"]
             copy_blobs(storage_client, export_container_name, import_container_name, blob_clients)
 
