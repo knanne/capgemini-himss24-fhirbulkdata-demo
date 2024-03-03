@@ -7,9 +7,9 @@
       "direction": "in",
       "name": "req",
       "methods": [
-        "get",
-        "post"
-      ]
+        "post",
+      ],
+      "route": "himss24demo/{datatype:alpha}/{period:alpha}"
     },
     {
       "type": "http",

@@ -26,6 +26,8 @@ from fhir.resources.parameters import Parameters, ParametersParameter
 
 app = func.FunctionApp()
 
+SLEEP_TIME = 10
+
 def get_token_url(smart_url):
     logging.info(f'Getting token URL from smart url: {smart_url}')
     try:
@@ -248,26 +250,34 @@ def get_fhir_server_access_token(fhir_server):
     logging.info('Successfully retrieved access token')
     return access_token
 
-def import_to_fhir(fhir_server, import_body, access_token):
-    logging.info(f'Importing Data for FHIR Server, Making a POST to {fhir_server}/$import')    
+def bulk_update_cg_fhir_server(fhir_server, access_token, operation, **kwargs):
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Prefer': 'respond-async',
         'Content-Type': 'application/fhir+json'
     }
-    r_kickoff = requests.post(f'{fhir_server}/$import', headers=headers, json=import_body)
+
+    if operation == 'import':
+        import_body = kwargs.get('import_body')
+        logging.info(f'Importing data to CG FHIR Server, making a POST to {fhir_server}/$import')    
+        r_kickoff = requests.post(f'{fhir_server}/$import', headers=headers, json=import_body)
+    elif operation == 'delete':
+        logging.info(f'Clearing data from CG FHIR Server')
+        queryp = {'_hardDelete': 'True'}
+        r_kickoff = requests.delete(f'{fhir_server}/$bulk-delete', headers=headers, params=queryp)
+
     if r_kickoff.ok:
         status_code = r_kickoff.status_code
         status_url = r_kickoff.headers['Content-Location']
-        logging.info(f'  Successfully kicked off import, status url is: {status_url}')
+        logging.info(f'  Successfully kicked off {operation}, status url is: {status_url}')
         return status_code, status_url
     else:
         try:
             message = r_kickoff.text
         except:
             message = ''
-        logging.info(f"  Failed to kick off import, {r_kickoff.status_code} "+message)
-        raise Exception(f"Failed to kick off import, {r_kickoff.status_code} "+message)
+        logging.info(f"  Failed to kick off {operation}, {r_kickoff.status_code} "+message)
+        raise Exception(f"Failed to kick off {operation}, {r_kickoff.status_code} "+message)
 
 def poll_status(status_code, status_url, access_token):
     logging.info(f'Checking status with: {status_url}...')
@@ -288,9 +298,9 @@ def poll_status(status_code, status_url, access_token):
                 logging.info(f'''Status: {status_code} - {r_status.headers['X-Progress']}''')
             except:
                 logging.info(f'Status: {status_code}')
-            logging.info('Sleeping 30s...')
-            time.sleep(30)
-            i+=30
+            logging.info('Sleeping 10s...')
+            time.sleep(10)
+            i+=10
         else:
             logging.info(f'Status: {status_code} {r_status.text}')
             raise Exception(f'Status: {status_code} {r_status.text}')
@@ -303,8 +313,11 @@ def poll_status(status_code, status_url, access_token):
         r_status = requests.get(status_url, headers=headers)
 
         if 'capgemini' in status_url:
-            logging.info(r_status.json()['output'])
-            logging.info(r_status.json()['error'])
+            if 'import' in status_url:
+                logging.info(r_status.json()['output'])
+                logging.info(r_status.json()['error'])
+            elif 'delete' in status_url:
+                logging.info(r_status.json()['parameter'])
 
         return status_code, r_status.content
     else:
@@ -429,7 +442,9 @@ def process_demo_data(server_url, resource_name, data_bytes):
             for i,resource in enumerate(ndjson):
                 logging.info(f'  {i}: Updating MedicationRequest')
                 resource_json = json.loads(resource)
-                resource_json['authoredOn'] = '2019-10-25'
+                resource_json['authoredOn'] = '2019-10-23'
+                resource_json['dispenseRequest']['validityPeriod']['start'] = '2019-10-30'
+                resource_json['dispenseRequest']['validityPeriod']['end'] = '2020-01-28'
                 ndjson[i] = json.dumps(resource_json)
     elif 'bcda' in server_url:
         ndjson_removed = []
@@ -453,8 +468,8 @@ def process_demo_data(server_url, resource_name, data_bytes):
                         for item in resource_json['item']:
                             serviced_date = item['servicedDate']
                         
-                        # remove eobs with a service date before 2019-09-01
-                        if serviced_date < '2019-09-01':
+                        # remove eobs with a service date before 2019-10-30
+                        if serviced_date < '2019-10-30':
                             ndjson_removed.append(resource_json['id'])
                         else:
                             logging.info(f'  {i}: Updating ExplanationOfBenefit')
@@ -482,7 +497,8 @@ def process_demo_data(server_url, resource_name, data_bytes):
                                                     code['display'] = rxinfo['name']
                                                                                         
                                             rx_norm_code = {'system': 'http://www.nlm.nih.gov/research/umls/rxnorm',
-                                                            'code': rxinfo['rxnorm']}
+                                                            'code': rxinfo['rxnorm'],
+                                                            'display': rxinfo['name']}
                                             item['productOrService']['coding'].append(rx_norm_code)
                     
                 ndjson[i] = json.dumps(resource_json)
@@ -504,125 +520,179 @@ def get_rxinfo(ndc):
 def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.Out[str], conditionBlob: func.Out[str], medicationRequestBlob: func.Out[str], practitionerBlob: func.Out[str], organizationBlob: func.Out[str], explanationOfBenefitBlob: func.Out[str], coverageBlob: func.Out[str]) -> func.HttpResponse:
     logging.info('Python HTTP trigger function started')
 
-    ### PROCESS HTTP PARAMETERS ###
-    try:
-        req_body = req.get_json()
-    except ValueError:
-        return func.HttpResponse(
-            f"ERROR: Please provide a valid JSON body",
-            status_code=400
-        )
-    
-    server_url = req_body.get('server-url',None)
-    if server_url is None:
-        logging.info('ERROR: Missing server_url in request body')
-        return func.HttpResponse(f"ERROR: Missing server_url in request body",status_code=400)
-    
-    smart_url = req_body.get('smart-url',None)
-    token_url = req_body.get('token-url',None)
-    if smart_url is None and token_url is None:
-        logging.info('ERROR: Must provide one of smart-url or token-url in request body')
-        return func.HttpResponse(f"ERROR: Must provide one of smart-url or token-url in request body",status_code=400)
-    
-    client_id = req_body.get('client-id',None)
-    if client_id is None:
-        logging.info('ERROR: Missing client-id in request body')
-        return func.HttpResponse(f"ERROR: Missing client-id in request body",status_code=400)
-    
-    group_id = req_body.get('group-id',None)
-    if group_id is None:
-        logging.info('ERROR: Missing group-id in request body')
-        return func.HttpResponse(f"ERROR: Missing group-id in request body",status_code=400)
-    
-    secret_name = req_body.get('secret-name',None)
-    if not secret_name is None:
-        auth_method = 'secret'
-    else:
-        logging.info('No secret-name provided, assuming authentication via JWT')
-        auth_method = 'jwt'
-    
-    since_date = req_body.get('since_date',None) # Must be in format YYYY-MM-DDThh:mm:ss.sss+zz:zz (e.g. 2015-02-07T13:28:17.239+02:00 or 2017-01-01T00:00:00Z)
-    if since_date is None:
-        kickoff_url = f'{server_url}/Group/{group_id}/$export'
-    else:
-        kickoff_url = f'{server_url}/Group/{group_id}/$export?_since={since_date}'
-    
-    jwt_method = req_body.get('jwt_method','key') # Can be one of (certificate, key)
-    kid = req_body.get('kid','https://fhirbulkdatakeyvault.vault.azure.net/keys/CapgeminiHIMSS24DemoKey/de37d81fcca74fa49346865f45b8534b')
-    scope = req_body.get('scope','system/Condition.read system/MedicationRequest.read system/Patient.read')
+    req_method = req.method
+    req_datatype = req.route_params.get('datatype')
+    req_period = req.route_params.get('period')
 
-    try:
-        storage_name = os.environ["storage_name"]
-        storage_client = build_storage_client(storage_name)
-        export_container_name = os.environ["export_container_name"]
+    storage_name = os.environ["storage_name"]
+    storage_client = build_storage_client(storage_name)
+    export_container_name = os.environ["export_container_name"]
+    initialization_container_name = os.environ["initialization_container_name"]
+    capgemini_fhir_server = os.environ["capgemini_fhir_server"]
+
+    if req_method == 'POST':
+        ### PROCESS HTTP PARAMETERS ###
+        try:
+            req_body = req.get_json()
+        except ValueError:
+            return func.HttpResponse(
+                f"ERROR: Please provide a valid JSON body",
+                status_code=400
+            )
         
-        ### AUTHENTICATE VENDOR FHIR SERVER ###
-        if smart_url is not None:
-            token_url = get_token_url(smart_url)
-        
-        if auth_method == 'jwt':
-            vault_name = os.environ["vault_name"]
-            if jwt_method == 'certificate':
-                certificate_name = os.environ["certificate_name"]
-                crypto_client = build_crypto_client(vault_name, certificate_name=certificate_name)
-            elif jwt_method == 'key':
-                key_name = os.environ["key_name"]
-                crypto_client = build_crypto_client(vault_name, key_name=key_name)
-            signed_jwt = sign_jwt(client_id, token_url, crypto_client, kid=kid)
-            access_token, expire_time = get_access_token(token_url, signed_jwt=signed_jwt, scope=scope)
-        elif auth_method == 'secret':
-            client_secret = get_secret_for_client(secret_name)
-            access_token, expire_time = get_access_token(token_url, client_id=client_id, client_secret=client_secret, scope=scope)
-
-        ### KICK OFF EXPORT FROM VENDOR FHIR SERVER ###
-        status_code, status_url = kickoff_export(kickoff_url, access_token)
-        status_code, status_content = poll_status(status_code, status_url, access_token)
-
-        ### GET EXPORT FROM VENDOR FHIR SERVER ###
-        blob_clients = []
-        for r in json.loads(status_content)['output']:
-            resource_type = r['type']
+        if req_datatype == 'bulk-import' and req_period == 'latest':    
+            server_url = req_body.get('server-url',None)
+            if server_url is None:
+                logging.info('ERROR: Missing server_url in request body')
+                return func.HttpResponse(f"ERROR: Missing server_url in request body",status_code=400)
             
-            logging.info(f'Attemping to get export for {resource_type}')
-            data_url = r['url']
-            r_file = get_data_export(data_url, access_token)
+            smart_url = req_body.get('smart-url',None)
+            token_url = req_body.get('token-url',None)
+            if smart_url is None and token_url is None:
+                logging.info('ERROR: Must provide one of smart-url or token-url in request body')
+                return func.HttpResponse(f"ERROR: Must provide one of smart-url or token-url in request body",status_code=400)
             
-            data_bytes = r_file.content
-
-            file_name = resource_type+'-'+client_id+'-'+str(uuid.uuid4())+'.json'
+            client_id = req_body.get('client-id',None)
+            if client_id is None:
+                logging.info('ERROR: Missing client-id in request body')
+                return func.HttpResponse(f"ERROR: Missing client-id in request body",status_code=400)
             
-            ### PROCESS DATA FOR DEMO ###
-            data_bytes = process_demo_data(server_url, resource_type, data_bytes)
+            group_id = req_body.get('group-id',None)
+            if group_id is None:
+                logging.info('ERROR: Missing group-id in request body')
+                return func.HttpResponse(f"ERROR: Missing group-id in request body",status_code=400)
+            
+            secret_name = req_body.get('secret-name',None)
+            if not secret_name is None:
+                auth_method = 'secret'
+            else:
+                logging.info('No secret-name provided, assuming authentication via JWT')
+                auth_method = 'jwt'
+            
+            since_date = req_body.get('since_date',None) # Must be in format YYYY-MM-DDThh:mm:ss.sss+zz:zz (e.g. 2015-02-07T13:28:17.239+02:00 or 2017-01-01T00:00:00Z)
+            if since_date is None:
+                kickoff_url = f'{server_url}/Group/{group_id}/$export'
+            else:
+                kickoff_url = f'{server_url}/Group/{group_id}/$export?_since={since_date}'
+            
+            jwt_method = req_body.get('jwt_method','key') # Can be one of (certificate, key)
+            kid = req_body.get('kid','https://fhirbulkdatakeyvault.vault.azure.net/keys/CapgeminiHIMSS24DemoKey/de37d81fcca74fa49346865f45b8534b')
+            scope = req_body.get('scope','system/Condition.read system/MedicationRequest.read system/Patient.read')
 
-            ### LOCAL ONLY - WRITE TO FILE ###
-            #logging.info('Writing to Local Storage')
-            #with open('data/'+file_name, 'wb') as f:
-            #    f.write(data_bytes
+            try:                
+                ### AUTHENTICATE VENDOR FHIR SERVER ###
+                if smart_url is not None:
+                    token_url = get_token_url(smart_url)
+                
+                if auth_method == 'jwt':
+                    vault_name = os.environ["vault_name"]
+                    if jwt_method == 'certificate':
+                        certificate_name = os.environ["certificate_name"]
+                        crypto_client = build_crypto_client(vault_name, certificate_name=certificate_name)
+                    elif jwt_method == 'key':
+                        key_name = os.environ["key_name"]
+                        crypto_client = build_crypto_client(vault_name, key_name=key_name)
+                    signed_jwt = sign_jwt(client_id, token_url, crypto_client, kid=kid)
+                    access_token, expire_time = get_access_token(token_url, signed_jwt=signed_jwt, scope=scope)
+                elif auth_method == 'secret':
+                    client_secret = get_secret_for_client(secret_name)
+                    access_token, expire_time = get_access_token(token_url, client_id=client_id, client_secret=client_secret, scope=scope)
 
-            ### UPLOAD TO BLOB STORAGE ###
-            blob_client = upload_blob_stream(storage_client, export_container_name, file_name, data_bytes)
-            blob_clients.append(blob_client)
+                ### KICK OFF EXPORT FROM VENDOR FHIR SERVER ###
+                status_code, status_url = kickoff_export(kickoff_url, access_token)
+                status_code, status_content = poll_status(status_code, status_url, access_token)
+
+                ### GET EXPORT FROM VENDOR FHIR SERVER ###
+                blob_clients = []
+                for r in json.loads(status_content)['output']:
+                    resource_type = r['type']
+                    
+                    logging.info(f'Attemping to get export for {resource_type}')
+                    data_url = r['url']
+                    r_file = get_data_export(data_url, access_token)
+                    
+                    data_bytes = r_file.content
+
+                    file_name = resource_type+'-'+client_id+'-'+str(uuid.uuid4())+'.json'
+                    
+                    ### PROCESS DATA FOR DEMO ###
+                    data_bytes = process_demo_data(server_url, resource_type, data_bytes)
+
+                    ### LOCAL ONLY - WRITE TO FILE ###
+                    #logging.info('Writing to Local Storage')
+                    #with open('data/'+file_name, 'wb') as f:
+                    #    f.write(data_bytes
+
+                    ### UPLOAD TO BLOB STORAGE ###
+                    blob_client = upload_blob_stream(storage_client, export_container_name, file_name, data_bytes)
+                    blob_clients.append(blob_client)
+                
+                # TODO: Change this to Polling
+                # logging.info('Waiting for Uploads to complete, sleeping 30s...')
+                # time.sleep(30)
+
+                ### IMPORT INTO CAPGEMINI FHIR SERVER ###
+                import_body = build_fhir_import_parameters(storage_client, export_container_name, blob_clients)
+
+                access_token = get_fhir_server_access_token(capgemini_fhir_server)
+                status_code, status_url = bulk_update_cg_fhir_server(capgemini_fhir_server, access_token, 'import', import_body=import_body)
+                poll_status_code, status_content = poll_status(status_code, status_url, access_token)
+                
+                ### MOVE BLOBS ONCE UPLOADED ###
+                import_container_name = os.environ["import_container_name"]
+                copy_blobs(storage_client, export_container_name, import_container_name, blob_clients)
+
+                message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
+            except Exception as e:
+                message: f'Import polling status_code: 500 \n Import polling content: {e}'
         
-        # TODO: Change this to Polling
-        logging.info('Waiting for Uploads to complete, sleeping 30s...')
-        time.sleep(30)
+        elif request_datatype == 'bulk-import' and req_period = 'historical':
+            access_token = get_fhir_server_access_token(capgemini_fhir_server)
+            try:
+                ### CLEAR CAPGEMINI FHIR SERVER ###
+                logging.info('Clearing data from Capgemini FHIR Server')
+                status_code, status_url = bulk_update_cg_fhir_server(capgemini_fhir_server, access_token, 'delete')
+                status_code, status_content = poll_status(status_code, status_url, access_token)
 
-        ### IMPORT INTO CAPGEMINI FHIR SERVER ###
-        import_body = build_fhir_import_parameters(storage_client, export_container_name, blob_clients)
+                ### IMPORT INTO CAPGEMINI FHIR SERVER ###
+                logging.info('Importing initial data into Capgemini FHIR server')
 
-        capgemini_fhir_server = os.environ["capgemini_fhir_server"]
-        access_token = get_fhir_server_access_token(capgemini_fhir_server)
-        status_code, status_url = import_to_fhir(capgemini_fhir_server, import_body, access_token)
-        status_code, status_content = poll_status(status_code, status_url, access_token)
-        
-        ### MOVE BLOBS ONCE UPLOADED ###
-        import_container_name = os.environ["import_container_name"]
-        copy_blobs(storage_client, export_container_name, import_container_name, blob_clients)
+                # Timestamp to append to initialization data file names
+                ts = int(round(datetime.datetime.now().timestamp()))
 
-        return func.HttpResponse(
-            f"SUCCESS: FHIR Bulk Export Complete",
-            status_code=200
-        )
+                # List current blobs in initialization container
+                container_client = storage_client.get_container_client(container=initialization_container_name)
+                blob_list = container_client.list_blobs()
+                
+                initialization_blobs = []
+                for blob_name in blob_list:
+                    new_blob_name = re.sub('\d+', str(ts), blob_name)
+                    blob_client = storage_client.get_blob_client(initialization_container_name, blob)
+                    new_blob_client = storage_client.get_blob_client(initialization_container_name, new_blob_name)
+
+                    # Copy the blob to the new name
+                    new_blob_client.start_copy_from_url(blob_client.url)
+                    initialization_blobs.append(new_blob_client)
+
+                    # Delete the original blob
+                    blob_client.delete_blob()
+                    print(f'{blob_name} renamed to {new_blob_name}')
+                
+                import_body = build_fhir_import_parameters(storage_client, initialization_container_name, initialization_blobs)
+                
+                status_code, status_url = bulk_update_cg_fhir_server(capgemini_fhir_server, access_token, 'import', import_body=import_body)
+                poll_status_code, status_content = poll_status(status_code, status_url, access_token)
+
+                message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
+            except Exception as e:
+                message: f'Import polling status_code: 500 \n Import polling content: {e}'
+        elif request_datatype == 'token':
+            message = get_fhir_server_access_token(capgemini_fhir_server)
+
+    return func.HttpResponse(
+        message,
+        status_code=200
+    )
     except Exception as e:
         return func.HttpResponse(
             f"{e}",
