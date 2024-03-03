@@ -701,13 +701,13 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 logging.exception("error")
 
         return func.HttpResponse(
-            message,
+            json.dumps(message),
             status_code=200
         )
     except Exception as e:
         logging.exception("error")
         message = {'error': f"{e}"}
         return func.HttpResponse(
-            message,
+            json.dumps(message),
             status_code=500
         )
