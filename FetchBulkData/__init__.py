@@ -341,7 +341,7 @@ def copy_blobs(storage_client, source_container, target_container, copy_blobs):
         source_blob_uri = storage_client.url+source_container+'/'+blob_client.blob_name
         target_blob_uri = storage_client.url+target_container+'/'+blob_client.blob_name
         target_blob = storage_client.get_blob_client(target_container, blob_client.blob_name)
-        target_blob.start_copy_from_url(source_blob_uri)
+        target_blob.start_copy_from_url(source_blob_uri, requires_sync=True)
         source_blob = storage_client.get_blob_client(source_container, blob_client.blob_name)
         source_blob.delete_blob()
         logging.info('  Successfully copied')
@@ -667,16 +667,16 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
 
                 # List current blobs in initialization container
                 container_client = storage_client.get_container_client(container=initialization_container_name)
-                blob_list = container_client.list_blobs()
+                blob_list = container_client.list_blob_names()
                 
                 initialization_blobs = []
                 for blob_name in blob_list:
                     new_blob_name = re.sub('\d+', str(ts), blob_name)
-                    blob_client = storage_client.get_blob_client(initialization_container_name, blob)
+                    blob_client = storage_client.get_blob_client(initialization_container_name, blob_name)
                     new_blob_client = storage_client.get_blob_client(initialization_container_name, new_blob_name)
 
                     # Copy the blob to the new name
-                    new_blob_client.start_copy_from_url(blob_client.url)
+                    new_blob_client.start_copy_from_url(blob_client.url, requires_sync=True)
                     initialization_blobs.append(new_blob_client)
 
                     # Delete the original blob
