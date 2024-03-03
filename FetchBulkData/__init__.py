@@ -317,7 +317,7 @@ def poll_status(status_code, status_url, access_token):
                 logging.info(r_status.json()['output'])
                 logging.info(r_status.json()['error'])
             elif 'delete' in status_url:
-                logging.info(r_status.json()['parameter'])
+                logging.info(r_status.json())
 
         return status_code, r_status.content
     else:
