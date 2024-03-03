@@ -691,18 +691,21 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
                 message = f'Import polling status_code: {poll_status_code} \n Import polling content: {status_content}'
             except Exception as e:
                 message = f'{e}'
+                logging.exception("error")
         elif req_datatype == 'token':
             logging.info('Get token for CG FHIR server')
             try:
                 message = get_fhir_server_access_token(capgemini_fhir_server)
             except Exception as e:
                 message: f'Getting token failed: {e}'
+                logging.exception("error")
 
         return func.HttpResponse(
             message,
             status_code=200
         )
     except Exception as e:
+        logging.exception("error")
         return func.HttpResponse(
             f"{e}",
             status_code=500
