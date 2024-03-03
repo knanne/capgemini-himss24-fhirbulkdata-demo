@@ -651,7 +651,7 @@ def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.
             except Exception as e:
                 message: f'Import polling status_code: 500 \n Import polling content: {e}'
         
-        elif request_datatype == 'bulkimport' and req_period == 'historical':
+        elif req_datatype == 'bulkimport' and req_period == 'historical':
             logging.info('Reset CG FHIR server with historical data')
             access_token = get_fhir_server_access_token(capgemini_fhir_server)
             try:
