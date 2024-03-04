@@ -287,7 +287,7 @@ def poll_status(status_code, status_url, access_token):
     }
 
     exp_backoff_cnt = 1
-    while status_code != 200 or exp_backoff_cnt > 8:
+    while status_code != 200 or exp_backoff_cnt > 100:
         r_status = requests.get(status_url, headers=headers)
         status_code = r_status.status_code
         if status_code == 200:
@@ -297,7 +297,7 @@ def poll_status(status_code, status_url, access_token):
                 logging.info(f'''Status: {status_code} - {r_status.headers['X-Progress']}''')
             except:
                 logging.info(f'Status: {status_code}')
-            sleep_time = 2 ** exp_backoff_cnt
+            sleep_time = 2 * exp_backoff_cnt
             logging.info(f'Sleeping {sleep_time}s...')
             time.sleep(sleep_time)
             exp_backoff_cnt += 1
