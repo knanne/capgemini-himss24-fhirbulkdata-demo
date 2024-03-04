@@ -476,6 +476,9 @@ def process_demo_data(server_url, resource_name, data_bytes):
 
                             # remove meta element so import won't fail on version conflicts
                             del resource_json['meta']
+                            resource_json['supportingInfo'][0]['valueQuantity']['value'] = 0
+                            resource_json['supportingInfo'][1]['valueQuantity']['value'] = 90
+
 
                             # update rx claims with name, if necessary, and rxnorm code
                             for item in resource_json['item']:
@@ -500,6 +503,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
                                                             'code': rxinfo['rxnorm'],
                                                             'display': rxinfo['name']}
                                             item['productOrService']['coding'].append(rx_norm_code)
+                                item['quantity']['value'] = 90
                     
                 ndjson[i] = json.dumps(resource_json)
             
