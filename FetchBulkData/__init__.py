@@ -287,7 +287,7 @@ def poll_status(status_code, status_url, access_token):
     }
 
     exp_backoff_cnt = 1
-    while status_code != 200 or exp_backoff_cnt > 100:
+    while status_code != 200 or exp_backoff_cnt < 100:
         r_status = requests.get(status_url, headers=headers)
         status_code = r_status.status_code
         if status_code == 200:
