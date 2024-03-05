@@ -521,7 +521,7 @@ def get_rxinfo(ndc):
     return {'name': body['ndcStatus']['conceptName'], 'rxnorm': body['ndcStatus']['rxcui']}
 
 
-def main(req: func.HttpRequest, patientBlob: func.Out[str], encounterBlob: func.Out[str], conditionBlob: func.Out[str], medicationRequestBlob: func.Out[str], practitionerBlob: func.Out[str], organizationBlob: func.Out[str], explanationOfBenefitBlob: func.Out[str], coverageBlob: func.Out[str]) -> func.HttpResponse:
+def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         logging.info('Python HTTP trigger function started')
         logging.info('Getting request params')
