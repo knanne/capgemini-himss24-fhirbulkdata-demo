@@ -13,6 +13,7 @@ import hashlib
 import requests
 import json
 import ndjson
+import mimetypes
 
 import azure.functions as func
 from azure.identity import DefaultAzureCredential
@@ -538,7 +539,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f'Env vars: {storage_name}, {export_container_name}, {initialization_container_name}, {capgemini_fhir_server}')
         storage_client = build_storage_client(storage_name)
         
-        if req_datatype == 'bulkimport' and req_period == 'latest':
+        if req_method == 'GET' and req_datatype == 'analytics' and req_period == 'report':
+            logging.info('Serving Report')
+            with open('static/report.html', 'rb') as f:
+                mimetype = mimetypes.guess_type('report.html')
+                return func.HttpResponse(f.read(), mimetype=mimetype[0])
+
+        elif req_datatype == 'bulkimport' and req_period == 'latest':
             logging.info('Get latest data from specified source')
             
             logging.info('### PROCESS HTTP PARAMETERS ###')
@@ -696,6 +703,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             except Exception as e:
                 message = {'error': f"{e}"}
                 logging.exception("error")
+        
         elif req_method == 'GET' and req_datatype == 'token':
             logging.info('Get token for CG FHIR server')
             try:
