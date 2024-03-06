@@ -443,6 +443,7 @@ def process_demo_data(server_url, resource_name, data_bytes):
                 # only update the demo patient (one with conditions and medications)
                 if resource_json['id'] == cerner_demo_patient_id:
                     logging.info(f"  Updating Patient Resource with ID: {resource_json['id']}")
+                    del resource_json['meta']
                     resource_json['identifier'] = [json.loads(demo_patient_identifier)]
                     ndjson[i] =  json.dumps(resource_json)
         elif resource_name == 'MedicationRequest':
