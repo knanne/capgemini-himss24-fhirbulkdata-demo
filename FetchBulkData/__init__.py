@@ -427,6 +427,13 @@ def process_demo_data(server_url, resource_name, data_bytes):
                     pass
                 resource_json['medicationCodeableConcept'] = json.loads(demo_medication_codeableconcept)
                 resource_json['authoredOn'] = '2019-09-04'
+                resource_json['dispenseRequest']['validityPeriod']['start'] = '2019-10-30'
+                resource_json['dispenseRequest']['validityPeriod']['end'] = '2020-01-28'
+                resource_json['dispenseRequest']['numberOfRepeatsAllowed'] = 2
+                resource_json['dispenseRequest']['quantity']['value'] = 10
+                resource_json['dispenseRequest']['quantity']['unit'] = 'ml'
+                resource_json['dispenseRequest']['quantity']['system'] = 'http://unitsofmeasure.org'
+                resource_json['dispenseRequest']['quantity']['code'] = 'ml'
                 ndjson[i] = json.dumps(resource_json)
     elif 'cerner' in server_url:
         logging.info('Updating Cerner Data')
@@ -476,14 +483,22 @@ def process_demo_data(server_url, resource_name, data_bytes):
 
                             # remove meta element so import won't fail on version conflicts
                             del resource_json['meta']
+                                
                             resource_json['supportingInfo'][0]['valueQuantity']['value'] = 0
-                            resource_json['supportingInfo'][1]['valueQuantity']['value'] = 90
+                            if resource_json['id'] == 'pde--10000000760':
+                                resource_json['supportingInfo'][1]['valueQuantity']['value'] = 30
+                            else:
+                                resource_json['supportingInfo'][1]['valueQuantity']['value'] = 90
+
 
 
                             # update rx claims with name, if necessary, and rxnorm code
                             for item in resource_json['item']:
                                 for code in item['productOrService']['coding']:
                                     if code['system'] == 'http://hl7.org/fhir/sid/ndc':
+                                        if resource_json['id'] == 'pde--10000000760':
+                                            code['code'] = '00002871501'
+                                            code['display'] = 'insulin isophane, human 70 UNT/ML / insulin, regular, human 30 UNT/ML Injectable Suspension [Humulin]'
                                         logging.info(f'   {i}: Getting additional info from NIH...')
                                         rxinfo = get_rxinfo(code['code'])
                                         
@@ -503,7 +518,12 @@ def process_demo_data(server_url, resource_name, data_bytes):
                                                             'code': rxinfo['rxnorm'],
                                                             'display': rxinfo['name']}
                                             item['productOrService']['coding'].append(rx_norm_code)
-                                item['quantity']['value'] = 90
+                                if resource_json['id'] == 'pde--10000000760':
+                                    item['quantity']['value'] = 10
+                                    item['quantity']['unit'] = 'ml'
+                                else:
+                                    item['quantity']['value'] = 90
+                                    item['quantity']['unit'] = 'tabs'
                     
                 ndjson[i] = json.dumps(resource_json)
             
